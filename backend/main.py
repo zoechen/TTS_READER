@@ -111,10 +111,6 @@ def classify_failure(stderr: str) -> HTTPException:
     low = stderr.lower()
     if "expired" in low:
         return err(410, "ERR_TOKEN_EXPIRED", "Fulfillment token expired.")
-    if "e_lic_already_fulfilled" in low:
-        return err(409, "ERR_ALREADY_FULFILLED",
-                   "This license was already fulfilled by another Adobe account/device. "
-                   "Download a fresh .acsm from the store and try again before opening it elsewhere.")
     if "auth" in low or "e_adept_" in low or "login" in low:
         return err(401, "ERR_ADOBE_AUTH_FAILED", "Adobe authentication failed.")
     return err(502, "ERR_UPSTREAM_TIMEOUT", f"Adobe fulfillment failed: {stderr.strip()[:300]}")

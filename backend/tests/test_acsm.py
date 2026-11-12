@@ -82,8 +82,3 @@ def test_tts_upstream_failure_and_limits(monkeypatch):
     assert r.status_code == 502 and r.json()["detail"]["code"] == "ERR_TTS_UPSTREAM"
     assert client.post("/api/v1/tts", json={"text": "x" * 1001}).status_code == 413
     assert client.post("/api/v1/tts", json={"text": ""}).status_code == 422
-
-def test_already_fulfilled_is_classified():
-    import main
-    e = main.classify_failure("Exception code : 0x1003 Message : E_LIC_ALREADY_FULFILLED_BY_ANOTHER_USER http://x")
-    assert e.status_code == 409 and e.detail["code"] == "ERR_ALREADY_FULFILLED"
