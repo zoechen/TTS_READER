@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  acsm-service:
+    build:
+      context: ./backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - adobe-config:/root/.config/libgourou
+      - ./backend:/app # For development sync
+    environment:
+      - PYTHONUNBUFFERED=1
+      # Cloud TTS proxy (optional) — set in your shell or a .env file
+      - TTS_UPSTREAM_URL=${TTS_UPSTREAM_URL:-}
+      - TTS_API_KEY=${TTS_API_KEY:-}
+      - TTS_DEFAULT_VOICE=${TTS_DEFAULT_VOICE:-}
+      - TTS_BODY_TEMPLATE=${TTS_BODY_TEMPLATE:-{"input":{{text}},"voice":{{voice}}}}
+      - TTS_EXTRA_HEADERS=${TTS_EXTRA_HEADERS:-}
+
+volumes:
+  adobe-config:

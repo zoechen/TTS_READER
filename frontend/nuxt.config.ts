@@ -1,0 +1,13 @@
+import tailwindcss from '@tailwindcss/vite'
+
+export default defineNuxtConfig({
+  compatibilityDate: '2025-07-15',
+  devtools: { enabled: true },
+  ssr: false,
+  modules: ['@pinia/nuxt'],
+  css: ['~/assets/css/main.css'],
+  vite: { plugins: [tailwindcss()] },
+  runtimeConfig: {
+    public: { acsmApiBase: 'http://localhost:8000' }
+  }
+})
