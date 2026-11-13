@@ -7,11 +7,12 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - adobe-config:/root/.config/libgourou
+      - adobe-config:/root/.config/adept
       - ./backend:/app # For development sync
     environment:
       - PYTHONUNBUFFERED=1
       # Cloud TTS proxy (optional) — set in your shell or a .env file
+      - TTS_PROVIDER=${TTS_PROVIDER:-edge}
       - TTS_UPSTREAM_URL=${TTS_UPSTREAM_URL:-}
       - TTS_API_KEY=${TTS_API_KEY:-}
       - TTS_DEFAULT_VOICE=${TTS_DEFAULT_VOICE:-}

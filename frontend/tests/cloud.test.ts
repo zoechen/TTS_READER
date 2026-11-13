@@ -23,6 +23,13 @@ function setup(fetchImpl: any, cfg = {}) {
 const okFetch = () => vi.fn(async () => new Response(new Blob(['abc']), { status: 200 }))
 const opts = { rate: 1.5, pitch: 1, voice: 'v1' }
 
+describe('renderBody pitch', () => {
+  it('fills {{pitch}} and defaults to 0', () => {
+    expect(JSON.parse(renderBody('{"p":{{pitch}}}', { text: 'x', voice: 'v', rate: 1, pitch: 8 }))).toEqual({ p: 8 })
+    expect(JSON.parse(renderBody('{"p":{{pitch}}}', { text: 'x', voice: 'v', rate: 1 }))).toEqual({ p: 0 })
+  })
+})
+
 describe('CloudEngine', () => {
   it('posts with auth header, plays audio, fires onEnd', async () => {
     const f = okFetch()
@@ -78,5 +85,24 @@ describe('CloudEngine', () => {
 
   it('is unsupported until an endpoint is set', () => {
     expect(setup(okFetch(), { endpoint: '' }).eng.isSupported()).toBe(false)
+  })
+
+  it('re-fetches when pitch or rate changes (cache key includes prosody)', async () => {
+    const f = okFetch()
+    const { eng } = setup(f)
+    const h = { onEnd: vi.fn(), onError: vi.fn() }
+    eng.prefetch('同一句', { ...opts, pitchPct: 0 })
+    eng.prefetch('同一句', { ...opts, pitchPct: 8 })
+    eng.prefetch('同一句', { ...opts, pitchPct: 8 })
+    expect(f).toHaveBeenCalledTimes(2)
+    expect(JSON.parse((f.mock.calls[1] as any)[1].body).voice).toBe('v1')
+  })
+
+  it('keeps playbackRate at 1 when the server applies prosody', async () => {
+    const { eng, audio } = setup(okFetch())
+    eng.serverProsody = true
+    eng.speak('hi', { ...opts, rate: 1.3 }, { onEnd: vi.fn(), onError: vi.fn() })
+    await vi.waitFor(() => expect(audio.play).toHaveBeenCalled())
+    expect(audio.playbackRate).toBe(1)
   })
 })

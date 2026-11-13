@@ -3,6 +3,8 @@ export interface SpeakOptions {
   pitch: number
   /** Engine-specific voice identifier (voiceURI for Web Speech, voice name/id for cloud) */
   voice: string
+  /** Pitch change in percent for this utterance (0 = unchanged) */
+  pitchPct?: number
 }
 
 export interface SpeakHandlers {

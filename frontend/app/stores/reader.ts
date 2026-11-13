@@ -7,7 +7,7 @@ const SETTINGS_KEY = 'tts-reader-settings'
 
 export const defaultSettings = (): ReaderSettings => ({
   ttsEngine: 'webspeech',
-  cloud: { useProxy: true, endpoint: '', apiKey: '', voice: '', voiceFemale: '', voiceMale: '', bodyTemplate: '{"input":{{text}},"voice":{{voice}}}', extraHeaders: '' },
+  cloud: { useProxy: true, endpoint: '', apiKey: '', voice: '', voiceFemale: 'zh-TW-HsiaoChenNeural', voiceMale: 'zh-CN-YunxiNeural', bodyTemplate: '{"input":{{text}},"voice":{{voice}}}', extraHeaders: '' },
   ttsRate: 1.0,
   ttsPitch: 1.0,
   voiceMap: { any: 'Shelley (中文（台灣）)', female: 'Google 國語（臺灣）', male: 'Rocko (中文（台灣）)' },
@@ -17,6 +17,7 @@ export const defaultSettings = (): ReaderSettings => ({
   lineHeight: 1.8,
   fontFamily: 'serif',
   autoScroll: true,
+  expressive: true,
   pageWidth: 'normal'
 })
 

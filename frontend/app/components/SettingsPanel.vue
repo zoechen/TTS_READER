@@ -3,7 +3,7 @@
     <label class="block">語音引擎
       <select v-model="s.ttsEngine" class="w-full rounded border p-1" @change="emit('tts')">
         <option value="webspeech">瀏覽器內建 (Web Speech)</option>
-        <option value="cloud">雲端 TTS</option>
+        <option value="cloud">雲端 TTS（Edge 神經語音，需啟動後端）</option>
       </select>
     </label>
     <fieldset v-if="s.ttsEngine === 'cloud'" class="space-y-2 rounded border p-2">
@@ -41,6 +41,7 @@
         <option value="any">不限</option><option value="female">女聲</option><option value="male">男聲</option>
       </select>
     </label>
+    <label class="flex items-center gap-2"><input v-model="s.expressive" type="checkbox" @change="emit('tts')"> 情感語調（依問句、驚嘆、對話調整語氣與停頓）</label>
     <label class="block">語速 {{ s.ttsRate.toFixed(1) }}x
       <input v-model.number="s.ttsRate" type="range" min="0.5" max="2.5" step="0.1" class="w-full" @change="emit('tts')">
     </label>

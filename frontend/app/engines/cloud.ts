@@ -19,11 +19,12 @@ export const defaultCloudConfig = (): CloudTtsConfig => ({
 })
 
 /** Placeholders are replaced by JSON-encoded values (strings come quoted & escaped). */
-export function renderBody(template: string, vars: { text: string; voice: string; rate: number }): string {
+export function renderBody(template: string, vars: { text: string; voice: string; rate: number; pitch?: number }): string {
   return template
     .replace(/\{\{\s*text\s*\}\}/g, () => JSON.stringify(vars.text))
     .replace(/\{\{\s*voice\s*\}\}/g, () => JSON.stringify(vars.voice))
     .replace(/\{\{\s*rate\s*\}\}/g, () => String(vars.rate))
+    .replace(/\{\{\s*pitch\s*\}\}/g, () => String(vars.pitch ?? 0))
 }
 
 export interface CloudDeps {
@@ -52,7 +53,10 @@ export class CloudEngine implements TTSEngine {
 
   isSupported() { return !!this.getConfig().endpoint }
 
-  private key(text: string, o: SpeakOptions) { return `${o.voice}\u0000${text}` }
+  /** When true the server applies rate/pitch while synthesizing (Edge provider); playbackRate stays 1. */
+  serverProsody = false
+
+  private key(text: string, o: SpeakOptions) { return `${o.voice}\u0000${o.rate}\u0000${o.pitchPct ?? 0}\u0000${text}` }
 
   private fetchAudio(text: string, o: SpeakOptions): Promise<Blob> {
     const cfg = this.getConfig()
@@ -67,7 +71,7 @@ export class CloudEngine implements TTSEngine {
     const p = this.deps.fetch(cfg.endpoint, {
       method: 'POST',
       headers,
-      body: renderBody(cfg.bodyTemplate, { text, voice: o.voice, rate: o.rate })
+      body: renderBody(cfg.bodyTemplate, { text, voice: o.voice, rate: o.rate, pitch: o.pitchPct ?? 0 })
     }).then(async res => {
       if (!res.ok) throw new Error(`TTS HTTP ${res.status}`)
       const blob = await res.blob()
@@ -90,7 +94,7 @@ export class CloudEngine implements TTSEngine {
       const audio = this.audio ?? (this.audio = this.deps.createAudio())
       const done = () => { audio.onended = audio.onerror = audio.onplaying = null; this.deps.revokeObjectURL(url) }
       audio.src = url
-      audio.playbackRate = opts.rate
+      audio.playbackRate = this.serverProsody ? 1 : opts.rate
       ;(audio as any).preservesPitch = true
       audio.onplaying = () => { h.onStart?.(); h.onActivity?.() }
       audio.ontimeupdate = () => h.onActivity?.()

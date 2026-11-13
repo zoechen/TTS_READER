@@ -1,7 +1,7 @@
 # Web 語音朗讀閱讀器（Web Audio Reader）系統規格文件 (PRD & Tech Spec)
 
-**版本**：v1.2.0  
-**日期**：2026-11-11  
+**版本**：v1.3.0  
+**日期**：2026-11-12  
 **架構架構**：Client-Server 雙層混合架構（Vue 3 前端 + Python/FastAPI ACSM 中繼解密服務）  
 **目標**：提供無縫匯入標準電子書（EPUB/PDF/TXT）與 Adobe 授權憑證（`.acsm`），自動兌換、解密並在瀏覽器實現字幕級高亮與語音朗讀。
 
@@ -94,7 +94,16 @@
   * `400 ERR_ACSM_MALFORMED`: XML 結構損毀或非 ACSM 憑證。
   * `401 ERR_ADOBE_AUTH_FAILED`: Adobe 帳號驗證失敗或需要特定綁定帳號。
   * `410 ERR_TOKEN_EXPIRED`: 憑證已過期，無法向伺服器兌換。
-  * `502 ERR_UPSTREAM_TIMEOUT`: Adobe 履約伺服器無回應。
+  * `502 ERR_UPSTREAM_TIMEOUT`: Adobe 履約伺服器無回應；**其餘未分類的履約失敗也會落到此碼**（例如授權已被其他 Adobe 身分兌換，訊息內含 `E_LIC_ALREADY_FULFILLED_BY_ANOTHER_USER`），客戶端應直接顯示訊息內文。
+  * `503 ERR_ACTIVATION_PENDING`: 後端仍在向 Adobe 註冊裝置身分，請稍後重試。
+  * `503 ERR_ACTIVATION_FAILED`: 裝置身分註冊重試用盡仍失敗，需重啟後端。
+
+#### 3.1.1a Adobe 裝置身分（Device Activation）
+* **授權綁定規則**：Adobe 授權綁定於「購買」而非 `.acsm` 檔案本身，由**第一個兌換成功的 Adobe 身分**取得。同一身分可重複兌換同一本書；換了身分（例如容器重建後重新匿名註冊）則會被 Adobe 回應 `E_LIC_ALREADY_FULFILLED_BY_ANOTHER_USER`。重新下載 `.acsm` 不會重設綁定。本系統不提供、也不應實作繞過此綁定的機制；需重設綁定時請洽電子書平台客服。
+* **身分持久化**：`adept_activate` 將 `activation.xml`、`device.xml`、`devicesalt` 寫入 `~/.config/adept/`。此目錄**必須掛載為持久 volume**（`/root/.config/adept`），否則容器重建即遺失身分。
+* **啟動註冊**：僅在 `activation.xml` 不存在時註冊，於**背景執行緒**進行，API 與 `/health` 不受阻塞；每次嘗試逾時 45 秒，最多重試 5 次（間隔 5 秒）。
+* **已知陷阱**：`adept_activate` 偵測到目錄已存在時會互動詢問「覆蓋？[y/N]」，無回應時會無限重複輸出提示。後端以 stdin 自動回答 `y`（僅在確認無 `activation.xml` 時才執行，不會覆蓋既有身分），且所有外部工具輸出皆寫入大小受限的暫存檔（`RLIMIT_FSIZE`，僅保留尾端），避免失控輸出耗盡記憶體。
+* **狀態查詢**：`GET /api/v1/acsm/status` → `{"activation": "unknown|pending|ok|failed|unavailable"}`。
 
 #### 3.1.2 前端檔案匯入分流處理
 * **格式嗅探**：
@@ -114,7 +123,12 @@
 ])\s*
      ```
    * 長句保護：若單句長度超過 120 字且無標點，自動依據逗號（`，,`）或空格進行二級拆分。
-2. **語意結構映射**：
+2. **段落保留**：
+   * `SentenceItem.paraStart` 標記該句是否為段落第一句；閱讀畫面依此分段換行，段首縮排兩字。
+   * 分段規則：文字含空行（`\n\s*\n`）則以空行分段，否則以單一換行分段。
+   * **EPUB**：以走訪 DOM 區塊元素（`p, div, li, h1–h6, blockquote, section, article, tr, pre, dt, dd, figcaption`）取代 `innerText`（未渲染文件的 `innerText` 不含區塊換行），區塊間補 `\n\n`，`<br>` 補 `\n`。
+   * **PDF**：保留每行座標（x、結尾 x、y、字級），以 `linesToParagraphs` 判斷換段：行距大於該頁中位數行距約 1.45 倍、前一行句子已結束且本行首行縮排（約 1.2 字寬以上）、前一行句子已結束且為明顯短尾行、版面換欄。換頁時若上一頁結尾無結束標點，視為同一段延續到下一頁。
+3. **語意結構映射**：
    * 每個章節解析後映射為結構化陣列，建立雙向關聯（DOM 節點 ID $\leftrightarrow$ 播放句子 ID）：
      ```typescript
      interface SentenceItem {
@@ -122,6 +136,7 @@
        text: string          // 純文字內容（去除特殊控制字符）
        chapterId: string     // 所屬章節 ID
        order: number         // 播放順序
+       paraStart?: boolean   // 是否為段落第一句
        domSelector?: string  // 對應渲染節點選擇器
      }
      ```
@@ -137,7 +152,30 @@
    * **單句派發（Single-Utterance Dispatch）**：每次僅向瀏覽器發送一句 `SpeechSynthesisUtterance`。
    * **事件接力**：監聽 `onend` 事件；當觸發時，若處於 `PLAYING` 狀態，推進 `currentSentenceIndex` 並調用下一句播放。
    * **防超時機制（Keep-Alive）**：針對部分瀏覽器在長時間朗讀時的 GC Bug，每 10 秒執行一次心跳檢查（若 `speaking` 卻無事件觸發則重置調度）。
-3. **播放控制偏好**：
+3. **語音引擎（Strategy）**：`TTSEngine` 介面（`speak / cancel / isActive / prefetch`），目前有兩種實作：
+   * `webspeech`：瀏覽器內建 Web Speech API。
+   * `cloud`：呼叫後端 `POST /api/v1/tts`（或使用者自訂端點），播放回傳的音訊；提前預取下一句，並以「語音 + 速度 + 音調 + 文字」為快取鍵。
+4. **後端 TTS 代理**（`POST /api/v1/tts`，`GET /api/v1/tts/config`）：
+   * 請求：`{ text, voice?, rate (0.25–4, 1=正常), pitch (-50–50, 百分比, 0=不變) }`；`text` 上限 1000 字（`413 ERR_TTS_TEXT_TOO_LONG`）。
+   * `TTS_PROVIDER=edge`（預設）：使用 `edge-tts` 的 Microsoft Edge 神經語音，免費、免 API Key。`rate` 轉成 `±N%`，`pitch` 轉成 `±NHz`（約 2 Hz／1%）。預設語音 `zh-TW-HsiaoChenNeural`。服務偶發回傳空音訊，後端自動重試 3 次，仍失敗回 `502 ERR_TTS_UPSTREAM`；參數錯誤回 `400 ERR_TTS_BAD_PARAMS`。
+   * `TTS_PROVIDER=http`：以 `TTS_BODY_TEMPLATE`（支援 `{{text}} {{voice}} {{rate}} {{pitch}}`）轉發至 `TTS_UPSTREAM_URL`，金鑰僅存於伺服器環境變數。
+   * 純標點／符號的文字（如 `……`、`「」`、`———`）沒有可朗讀內容，Edge 會回傳空音訊；後端對 `edge` 模式直接回 `400 ERR_TTS_NO_SPEECH`（不重試），前端播放時則**直接跳過**這類句子（`isSpeakable`：需含至少一個字母或數字）。
+   * `/api/v1/tts/config` 回傳 `{ enabled, provider }`；provider 為 `edge` 時，前端將 `audio.playbackRate` 固定為 1（速度與音調由伺服器合成時套用）。
+   * **風險**：`edge-tts` 使用非官方端點，無服務保證，可能被限流或失效；失敗時介面顯示錯誤，使用者可切回 Web Speech。男聲 `zh-TW-YunJheNeural` 於 2026-11-12 測試持續失敗，預設男聲改用 `zh-CN-YunxiNeural`。
+5. **情感語調（Prosody）**：`analyzeProsody(text, { nextIsParaStart })` 依句子內容回傳 `{ rateMul, pitchPct, pauseAfterMs }`，由設定項 `expressive`（預設開啟）控制，兩種引擎皆適用：
+
+   | 條件 | 調整 |
+   | :--- | :--- |
+   | 結尾為 `？/?`（忽略結尾引號） | 音調 +8%、速度 ×0.97、停頓 400ms |
+   | 結尾為 `！/!` | 音調 +6%、速度 ×1.06、停頓 400ms |
+   | 結尾為 `…`、`...`、`——` | 速度 ×0.92、停頓 600ms |
+   | 整句位於 `「」『』“”` 內（對話） | 音調 +5%、速度 ×1.03 |
+   | 一般句號結尾 | 停頓 350ms |
+   | 逗號等子句結尾 | 停頓 180ms |
+   | 段落最後一句 | 停頓至少 700ms |
+
+   速度乘數限制在 0.8–1.2、音調限制在 ±15%。句間停頓以計時器實作，`pause / stop / seek / 換句` 時必須清除，避免殘留計時造成重複朗讀。預取下一句時使用該句自己的語氣參數以維持快取命中。
+6. **播放控制偏好**：
    * **語速（Rate）**：0.5x ~ 2.5x（步進 0.1）。
    * **音調（Pitch）**：0.8 ~ 1.2。
    * **語音切換（Voice Select）**：過濾可用語音，優先選擇符合語言標籤（如 `zh-TW`）之高品質語音。
@@ -157,9 +195,16 @@
 3. **隨點即讀（Click-to-Speech）**：
    * 內文中的每個句子節點均支援點擊事件，點擊後立刻中斷當前語音，從該句開始朗讀。
 4. **排版設定面板**：
-   * 字體（襯線體、無襯線體、楷體）。
-   * 字級（14px ~ 28px）、行距（1.5 ~ 2.2）、邊距調整。
-   * 主題切換：明亮（Light）、護眼（Sepia）、深色（Dark）。
+   * 字體（襯線體、無襯線體、楷體），按鈕式分段選擇。
+   * 字級（14px ~ 28px）、行距（1.5 ~ 2.2）。
+   * 邊距（`pageWidth`）：窄邊距（內文寬 60rem）、標準（46rem）、寬邊距（36rem）。
+   * 主題切換：明亮（Light）、護眼（Sepia）、深色（Dark），以色票按鈕呈現並即時預覽。
+   * 情感語調開關、語速、音調、語音選擇；點擊面板外部即關閉。
+5. **版面與主題**：
+   * 所有顏色以 CSS 變數（`--bg --fg --muted --border --surface --bar --accent --hl`）定義於 `main.css`，依 `data-theme` 切換；頂部列、底部控制列、設定面板與高亮句皆跟隨主題。
+   * 頂部列：返回書庫、書名、章節選單、百分比，下方為閱讀進度條。
+   * 底部控制列：上一章、上一句、播放／暫停（圓形主按鈕）、下一句、下一章、設定（Aa）；半透明模糊背景。
+   * 章節標題置中；內文以段落呈現（段首縮排、段間距），中文斷行最佳化。
 
 ---
 
@@ -201,6 +246,8 @@ export interface SentenceItem {
   order: number
   text: string
   chapterId: string
+  paraStart?: boolean   // 段落第一句
+  domSelector?: string
 }
 
 export interface Chapter {
@@ -219,15 +266,31 @@ export interface ReadProgress {
   updatedAt: number
 }
 
+export interface CloudSettings {
+  useProxy: boolean          // true: 走後端 /api/v1/tts 代理（金鑰存於伺服器）
+  endpoint: string
+  apiKey: string
+  voice: string
+  voiceFemale: string        // 預設 zh-TW-HsiaoChenNeural
+  voiceMale: string          // 預設 zh-CN-YunxiNeural
+  bodyTemplate: string       // 支援 {{text}} {{voice}} {{rate}} {{pitch}}
+  extraHeaders: string
+}
+
 export interface ReaderSettings {
+  ttsEngine: 'webspeech' | 'cloud'
+  cloud: CloudSettings
   ttsRate: number
   ttsPitch: number
-  voiceURI: string
+  voiceMap: Record<'any' | 'female' | 'male', string>   // Web Speech 各性別對應語音
+  voiceGender: 'any' | 'female' | 'male'
   theme: 'light' | 'sepia' | 'dark'
   fontSize: number
   lineHeight: number
-  fontFamily: 'sans' | 'serif'
+  fontFamily: 'sans' | 'serif' | 'kai'
   autoScroll: boolean
+  expressive: boolean                                    // 情感語調
+  pageWidth: 'narrow' | 'normal' | 'wide'               // 內文寬度（邊距）
 }
 ```
 
@@ -270,6 +333,20 @@ CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
 
 ---
 
+### 5.2 環境變數與 Volume
+
+| 變數 | 預設 | 說明 |
+| :--- | :--- | :--- |
+| `TTS_PROVIDER` | `edge` | `edge`：Edge 神經語音；`http`：轉發至 `TTS_UPSTREAM_URL` |
+| `TTS_UPSTREAM_URL` / `TTS_API_KEY` | 空 | `http` 模式的上游端點與金鑰（僅存伺服器） |
+| `TTS_DEFAULT_VOICE` | 空 | 請求未指定語音時使用（edge 預設 `zh-TW-HsiaoChenNeural`） |
+| `TTS_BODY_TEMPLATE` / `TTS_EXTRA_HEADERS` | 見 `docker-compose.yml` | `http` 模式的請求內容與額外標頭 |
+
+* **Volume**：`adobe-config` 必須掛載到 `/root/.config/adept`（Adobe 裝置身分，見 3.1.1a）。
+* **前端**：`runtimeConfig.public.acsmApiBase` 為後端網址（預設 `http://localhost:8000`），可用環境變數 `NUXT_PUBLIC_ACSM_API_BASE` 覆寫；區網手機測試時需改為電腦的區網 IP 並以 `nuxt dev --host` 啟動（Wake Lock 在非 HTTPS 下無法使用）。
+
+---
+
 ## 6. 專案開發里程碑 (Milestones & Roadmap)
 
 | 階段 | 週期 | 交付成果 (Deliverables) |
@@ -278,3 +355,4 @@ CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
 | **Phase 2: 前端核心播放與同步** | 1 週 | 實作 `useSpeechReader` 與分句器，完成「單句朗讀 + 自動接力 + 動態高亮 + 平滑滾動」。 |
 | **Phase 3: 本地解析與書庫管理** | 1.5 週 | 整合 `epub.js` 與 IndexedDB，完成本機書庫、章節目錄提取、全域閱讀進度恢復。 |
 | **Phase 4: 行動端與體驗最佳化** | 1 週 | 整合 Media Session API、Wake Lock API、鎖屏控制與閱讀排版面板（字級/主題）。 |
+| **Phase 5: 閱讀體驗與情感語調** | 1 週 | 介面主題化與排版優化、EPUB／PDF 段落保留、Edge 神經語音代理、情感語調（語氣與停頓）、Adobe 裝置身分持久化與背景註冊。 |

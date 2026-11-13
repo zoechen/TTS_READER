@@ -4,6 +4,8 @@ import type { SpeakOptions, TTSEngine } from '../engines/types'
 import { WebSpeechEngine } from '../engines/webSpeech'
 import { CloudEngine } from '../engines/cloud'
 import { resolveVoiceURI } from '../utils/voiceGender'
+import { analyzeProsody, isSpeakable, NEUTRAL } from '../utils/prosody'
+import type { SentenceItem } from '../types/reader'
 
 const voices = ref<SpeechSynthesisVoice[]>([])
 const lastError = ref('')
@@ -13,6 +15,9 @@ let heartbeat: ReturnType<typeof setInterval> | null = null
 let bound = false
 let webSpeech: WebSpeechEngine | null = null
 let cloud: CloudEngine | null = null
+let pauseTimer: ReturnType<typeof setTimeout> | null = null
+let providerChecked = false
+const clearPause = () => { if (pauseTimer) { clearTimeout(pauseTimer); pauseTimer = null } }
 
 export function useSpeechReader() {
   const store = useReaderStore()
@@ -25,9 +30,17 @@ export function useSpeechReader() {
     // Proxy mode: backend holds the provider key, URL and body template
     return {
       endpoint: `${apiBase}/api/v1/tts`, apiKey: '', extraHeaders: '',
-      bodyTemplate: '{"text":{{text}},"voice":{{voice}},"rate":{{rate}}}'
+      bodyTemplate: '{"text":{{text}},"voice":{{voice}},"rate":{{rate}},"pitch":{{pitch}}}'
     }
   })
+
+  // Edge provider synthesizes with the requested rate/pitch itself; ask the backend once.
+  if (!providerChecked && import.meta.client) {
+    providerChecked = true
+    fetch(`${apiBase}/api/v1/tts/config`).then(r => r.json())
+      .then(j => { cloud!.serverProsody = j?.provider === 'edge' })
+      .catch(() => { providerChecked = false })
+  }
 
   if (!bound && webSpeech.isSupported()) {
     bound = true
@@ -46,22 +59,38 @@ export function useSpeechReader() {
     }
     return resolveVoiceURI(voices.value, st.voiceMap[st.voiceGender], st.voiceGender)
   }
-  const opts = (): SpeakOptions => ({
-    rate: store.settings.ttsRate,
-    pitch: store.settings.ttsPitch,
-    voice: voiceFor()
-  })
+  /** Delivery for one sentence; `following` is the sentence read after it (undefined = end of chapter). */
+  function prosodyFor(s: SentenceItem, following?: SentenceItem) {
+    if (!store.settings.expressive) return NEUTRAL
+    return analyzeProsody(s.text, { nextIsParaStart: !following || !!following.paraStart })
+  }
+  const opts = (s?: SentenceItem, following?: SentenceItem): SpeakOptions => {
+    const p = s ? prosodyFor(s, following) : NEUTRAL
+    const st = store.settings
+    return {
+      rate: Math.min(Math.max(st.ttsRate * p.rateMul, 0.5), 2.5),
+      pitch: st.ttsPitch,
+      pitchPct: p.pitchPct,
+      voice: voiceFor()
+    }
+  }
 
   function peekNext() {
     const e = engine()
     if (!e.prefetch) return
     const i = store.sentenceIndex + 1
-    const s = store.sentences[i] ?? store.chapters[store.chapterIndex + 1]?.sentences[0]
-    if (s) e.prefetch(s.text, opts())
+    const inChapter = store.sentences[i]
+    const s = inChapter ?? store.chapters[store.chapterIndex + 1]?.sentences[0]
+    if (s) e.prefetch(s.text, opts(s, inChapter ? store.sentences[i + 1] : store.chapters[store.chapterIndex + 1]?.sentences[1]))
   }
 
   function speakCurrent() {
-    const sentence = store.currentSentence
+    let sentence = store.currentSentence
+    // Skip punctuation-only lines (separators, "……") instead of sending them to the engine
+    while (sentence && !isSpeakable(sentence.text)) {
+      if (!store.next()) { stop(); return }
+      sentence = store.currentSentence
+    }
     if (!sentence) { stop(); return }
     const e = engine()
     if (!e.isSupported()) {
@@ -72,15 +101,23 @@ export function useSpeechReader() {
       lastError.value = `找不到指定的語音「${store.settings.voiceMap[store.settings.voiceGender]}」，改用預設語音`
     }
     const myToken = ++token
+    clearPause()
     e.cancel()
     lastEventAt = Date.now()
-    e.speak(sentence.text, opts(), {
+    const following = store.sentences[store.sentenceIndex + 1]
+    const pauseMs = store.settings.expressive ? prosodyFor(sentence, following).pauseAfterMs : 0
+    e.speak(sentence.text, opts(sentence, following), {
       onStart: () => { peekNext() },
       onActivity: () => { lastEventAt = Date.now() },
       onEnd: () => {
         if (myToken !== token || store.playbackStatus !== 'PLAYING') return
-        if (store.next()) speakCurrent()
-        else stop()
+        const advance = () => {
+          if (myToken !== token || store.playbackStatus !== 'PLAYING') return
+          if (store.next()) speakCurrent()
+          else stop()
+        }
+        if (pauseMs > 0) pauseTimer = setTimeout(() => { pauseTimer = null; advance() }, pauseMs)
+        else advance()
       },
       onError: (msg) => {
         if (myToken !== token) return
@@ -114,6 +151,7 @@ export function useSpeechReader() {
   function pause() {
     if (store.playbackStatus !== 'PLAYING') return
     token++
+    clearPause()
     engine().cancel() // cancel + replay sentence is more reliable than pause() across engines
     store.setPlaybackStatus('PAUSED')
     stopHeartbeat()
@@ -121,6 +159,7 @@ export function useSpeechReader() {
   function resume() { if (store.playbackStatus === 'PAUSED') play() }
   function stop() {
     token++
+    clearPause()
     webSpeech?.cancel()
     cloud?.cancel()
     store.setPlaybackStatus('IDLE')

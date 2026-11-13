@@ -21,7 +21,7 @@ export class WebSpeechEngine implements TTSEngine {
     const u = new SpeechSynthesisUtterance(text)
     this.current = u
     u.rate = opts.rate
-    u.pitch = opts.pitch
+    u.pitch = Math.min(Math.max(opts.pitch * (1 + (opts.pitchPct ?? 0) / 100), 0), 2)
     const voice = this.pickVoice(opts.voice)
     if (voice) { u.voice = voice; u.lang = voice.lang }
     u.onstart = () => { h.onStart?.(); h.onActivity?.() }

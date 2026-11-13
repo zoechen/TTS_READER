@@ -64,6 +64,8 @@ export interface ReaderSettings {
   lineHeight: number
   fontFamily: 'sans' | 'serif' | 'kai'
   autoScroll: boolean
+  /** Adjust rate / pitch / pauses per sentence (questions, exclamations, dialogue, paragraph ends) */
+  expressive: boolean
   /** Reading column width */
   pageWidth: 'narrow' | 'normal' | 'wide'
 }
