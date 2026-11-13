@@ -99,6 +99,26 @@ export function useLibrary() {
     }
   }
 
+  /** 把書庫裡存的原檔（.acsm 兌換後即為解密的 EPUB/PDF）存成檔案；內容取自瀏覽器 IndexedDB，不需再連後端。 */
+  async function download(id: string) {
+    error.value = ''
+    try {
+      const rec = await db.books.get(id)
+      if (!rec) throw new Error('找不到書籍')
+      const safe = rec.title.replace(/[\\/:*?"<>|]/g, '_').trim() || 'book'
+      const url = URL.createObjectURL(rec.fileBlob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${safe}.${rec.format}`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 10000)
+    } catch (e: any) {
+      error.value = e?.message ?? String(e)
+    }
+  }
+
   async function remove(id: string) {
     await db.books.delete(id)
     await db.progress.delete(id)
@@ -116,5 +136,5 @@ export function useLibrary() {
     })
   }
 
-  return { status, error, books, refresh, importFile, openSaved, remove, saveProgress }
+  return { status, error, books, refresh, importFile, openSaved, download, remove, saveProgress }
 }

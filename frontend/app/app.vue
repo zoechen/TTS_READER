@@ -16,7 +16,10 @@
             <div class="font-semibold">{{ b.title }}</div>
             <div class="text-xs opacity-60">{{ b.author }} · {{ b.format }}</div>
           </button>
-          <button class="text-xs text-red-600" @click="lib.remove(b.id)">刪除</button>
+          <span class="flex items-center gap-3">
+            <button class="text-xs opacity-70 hover:opacity-100" @click="lib.download(b.id)">下載</button>
+            <button class="text-xs text-red-600" @click="lib.remove(b.id)">刪除</button>
+          </span>
         </li>
       </ul>
     </main>
