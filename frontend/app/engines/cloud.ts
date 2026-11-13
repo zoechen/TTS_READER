@@ -41,6 +41,20 @@ const browserDeps = (): CloudDeps => ({
   revokeObjectURL: u => URL.revokeObjectURL(u)
 })
 
+/**
+ * 【前後端對接點 ③】雲端 TTS 引擎（對應後端 POST /api/v1/tts）
+ *
+ * 單句朗讀流程：
+ *  1. useSpeechReader 呼叫 speak(文字, {voice, rate, pitchPct})
+ *  2. fetchAudio：依 bodyTemplate 組出 JSON（代理模式為
+ *     {"text":..,"voice":..,"rate":..,"pitch":..}）POST 給後端
+ *  3. 後端用 edge-tts 合成，回傳 audio/mpeg 二進位
+ *  4. 前端 res.blob() → URL.createObjectURL → <audio> 播放；播完觸發 onEnd 接下一句
+ *
+ * 延遲遮蔽：播放當句時 prefetch 下一句，結果存在 cache（Promise<Blob>），下一句直接命中。
+ * 快取鍵 = 語音+語速+音調+文字，參數不同就不會誤用舊音訊；失敗不快取。
+ * 取消機制：gen 世代號，每次 cancel/speak 遞增，過期的非同步回呼一律丟棄（避免重複朗讀）。
+ */
 export class CloudEngine implements TTSEngine {
   readonly id = 'cloud' as const
   private audio: HTMLAudioElement | null = null

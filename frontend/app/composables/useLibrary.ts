@@ -13,10 +13,22 @@ export function useLibrary() {
     books.value = await db.books.orderBy('lastReadAt').reverse().toArray()
   }
 
+  /**
+   * 【前後端對接點 ②】.acsm 兌換流程（對應後端 backend/main.py 的 fulfill_acsm）
+   *
+   * 完整流程：
+   *  1. 前端以 multipart/form-data 把 .acsm 檔 POST 到 /api/v1/acsm/fulfill
+   *  2. 後端驗證 XML → 呼叫 libgourou 的 acsmdownloader 向 Adobe 下載加密書
+   *     → adept_remove 解密 → 以 FileResponse 回傳 EPUB/PDF 二進位內容
+   *  3. 前端收到 blob 後，與一般 EPUB/PDF 走同一條解析路徑（parseBook），並存入 IndexedDB
+   *
+   * 錯誤格式：後端失敗時回 HTTP 4xx/5xx，body 為 {"detail":{"code":"ERR_xxx","message":"..."}}，
+   * 這裡組成「ERR_xxx: 訊息」丟出，最後顯示在畫面上的 error。
+   */
   async function fulfillAcsm(file: File): Promise<{ blob: Blob; name: string; title?: string; author?: string }> {
     status.value = '正在連線 Adobe 履約伺服器兌換並解密書籍...'
     const form = new FormData()
-    form.append('file', file)
+    form.append('file', file) // 欄位名 "file" 必須與後端 fulfill_acsm(file: UploadFile) 的參數名一致
     const res = await fetch(`${config.public.acsmApiBase}/api/v1/acsm/fulfill`, { method: 'POST', body: form })
     if (!res.ok) {
       const body = await res.json().catch(() => null)
@@ -24,7 +36,10 @@ export function useLibrary() {
       throw new Error(d?.code ? `${d.code}: ${d.message}` : `HTTP ${res.status}`)
     }
     const blob = await res.blob()
+    // 書名/作者放在回應標頭（URL 編碼以容納中文）；後端 CORS 的 expose_headers 有開放這兩個標頭，
+    // 否則瀏覽器的跨網域請求讀不到它們。
     const dec = (v: string | null) => (v ? decodeURIComponent(v) : undefined)
+    // 後端依檔頭是否為 %PDF 決定副檔名，並以 Content-Type 告知；前端據此判斷格式
     const ext = blob.type.includes('pdf') ? 'pdf' : 'epub'
     return { blob, name: `book.${ext}`, title: dec(res.headers.get('X-Book-Title')), author: dec(res.headers.get('X-Book-Author')) }
   }

@@ -29,13 +29,18 @@ export function useSpeechReader() {
   cloud ??= new CloudEngine(() => {
     const c = store.settings.cloud
     if (!c.useProxy) return c
-    // Proxy mode: backend holds the provider key, URL and body template
+    // 代理模式：改打自家後端 /api/v1/tts，由後端持有金鑰與上游設定（金鑰不進瀏覽器，也避開 CORS）。
+    // body 範本的 {{text}} 等佔位符由 cloud.ts 的 renderBody 代換成 JSON 值，
+    // 欄位須與後端 TtsRequest（text / voice / rate / pitch）一致。
     return {
       endpoint: `${apiBase}/api/v1/tts`, apiKey: '', extraHeaders: '',
       bodyTemplate: '{"text":{{text}},"voice":{{voice}},"rate":{{rate}},"pitch":{{pitch}}}'
     }
   })
 
+  // 【對接點 ④】啟動時問後端一次 GET /api/v1/tts/config，得知 provider。
+  // provider === 'edge'：語速/音調由伺服器合成時套用，前端 <audio> 的 playbackRate 固定為 1，
+  // 否則會重複加速。失敗時把旗標還原，下次再問。
   // Edge provider synthesizes with the requested rate/pitch itself; ask the backend once.
   if (!providerChecked && import.meta.client) {
     providerChecked = true

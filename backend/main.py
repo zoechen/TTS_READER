@@ -109,6 +109,22 @@ async def lifespan(_: FastAPI):
     task.cancel()
 
 
+# ===========================================================================
+# 前後端對接總覽（前端 Nuxt :3000 ⇄ 後端 FastAPI :8000，皆由瀏覽器直接呼叫）
+#
+#   端點                          前端呼叫處                          用途
+#   GET  /health                  （手動/容器健康檢查）               存活檢查
+#   GET  /api/v1/acsm/status      （除錯用）                          Adobe 裝置註冊狀態
+#   POST /api/v1/acsm/fulfill     composables/useLibrary.ts           .acsm 兌換→解密→回傳 EPUB/PDF
+#   GET  /api/v1/tts/config       composables/useSpeechReader.ts      問 TTS provider（edge/http）
+#   POST /api/v1/tts              engines/cloud.ts                    文字→語音 mp3
+#
+# 共通約定：
+#   - 錯誤一律 HTTP 4xx/5xx，body 為 {"detail":{"code":"ERR_xxx","message":"..."}}（見 err()）
+#   - 瀏覽器跨網域（:3000 → :8000）靠下方 CORS 中介層放行；
+#     自訂回應標頭 X-Book-Title 等需列在 expose_headers，前端才讀得到
+#   - 前端的後端位址來自 nuxt.config.ts 的 runtimeConfig.public.acsmApiBase
+# ===========================================================================
 app = FastAPI(title="ACSM Fulfillment Service", version="1.0.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
@@ -126,6 +142,7 @@ ADEPT_NS = "{http://ns.adobe.com/adept}"
 
 
 def err(status: int, code: str, message: str) -> HTTPException:
+    """統一的錯誤格式：前端 useLibrary.fulfillAcsm 會讀 detail.code / detail.message 並顯示。"""
     return HTTPException(status_code=status, detail={"code": code, "message": message})
 
 
@@ -186,6 +203,8 @@ def acsm_status():
 
 @app.post("/api/v1/acsm/fulfill")
 async def fulfill_acsm(
+    # 前端以 FormData 的 "file" 欄位上傳 .acsm（見 useLibrary.fulfillAcsm）。
+    # adobe_id / adobe_password 為預留欄位，目前前端未使用（匿名裝置註冊）。
     file: UploadFile = File(...),
     adobe_id: str | None = Form(None),
     adobe_password: str | None = Form(None),
@@ -193,11 +212,14 @@ async def fulfill_acsm(
     if not (file.filename or "").lower().endswith(".acsm"):
         raise err(400, "ERR_ACSM_MALFORMED", "Invalid file type. Only .acsm files are accepted.")
 
+    # 容器剛啟動時 Adobe 裝置註冊在背景執行（見 lifespan），尚未完成就先擋下，讓前端稍後重試
     if activation_state == "pending":
         raise err(503, "ERR_ACTIVATION_PENDING", "Adobe device registration is still in progress; retry in a minute.")
     if activation_state == "failed":
         raise err(503, "ERR_ACTIVATION_FAILED", "Adobe device registration failed; restart the backend to retry.")
 
+    # 每次請求用獨立暫存目錄（uuid），避免並行請求互相覆蓋；
+    # 成功時待回應送完由 BackgroundTask 清掉，失敗時於下方 except 清掉。
     work_dir = STORAGE_BASE / str(uuid.uuid4())
     work_dir.mkdir(parents=True)
     cleanup = BackgroundTask(shutil.rmtree, work_dir, ignore_errors=True)
@@ -206,8 +228,9 @@ async def fulfill_acsm(
         acsm_path = work_dir / "input.acsm"
         with acsm_path.open("wb") as buf:
             shutil.copyfileobj(file.file, buf)
-        meta = parse_acsm(acsm_path)
+        meta = parse_acsm(acsm_path)  # 步驟 1：驗證 XML 並取出書名/作者
 
+        # 步驟 2：acsmdownloader 向 Adobe 兌換授權並下載加密書（授權綁定第一次兌換的裝置身分）
         encrypted = work_dir / "encrypted.bin"
         dl = run_tool(["acsmdownloader", "-f", str(acsm_path), "-o", str(encrypted)])
         if dl.returncode != 0:
@@ -222,11 +245,14 @@ async def fulfill_acsm(
         ext = ".pdf" if produced.read_bytes()[:4] == b"%PDF" else ".epub"
         decrypted = work_dir / f"book{ext}"
 
+        # 步驟 3：adept_remove 用本機裝置金鑰（~/.config/adept）解密
         rm = run_tool(["adept_remove", "-f", str(produced), "-o", str(decrypted)])
         if rm.returncode != 0 or not decrypted.exists():
             logger.error("adept_remove failed: %s", rm.stderr)
             raise err(500, "ERR_DECRYPT_FAILED", "DRM decryption failed.")
 
+        # 步驟 4：書名/作者經 URL 編碼放進標頭（HTTP 標頭不能直接放中文），前端用 decodeURIComponent 還原；
+        # 檔案本體作為回應內容，Content-Type 讓前端分辨 PDF / EPUB
         title = meta["title"] or Path(file.filename).stem
         headers = {"X-Book-Title": quote(title)}
         if meta["author"]:
@@ -330,12 +356,19 @@ class TtsRequest(BaseModel):
 
 @app.get("/api/v1/tts/config")
 def tts_config():
+    # 前端啟動時呼叫一次：provider == "edge" 代表語速/音調由伺服器合成時處理，
+    # 前端播放時就不再用 playbackRate 加速（見 useSpeechReader / cloud.ts 的 serverProsody）
     provider = tts_provider()
     return {"enabled": provider == "edge" or bool(tts_settings()["url"]), "provider": provider}
 
 
 @app.post("/api/v1/tts")
 async def tts_proxy(req: TtsRequest):
+    # 請求 body（JSON）由前端 CloudEngine 組出：{"text","voice","rate","pitch"}，經 TtsRequest 驗證。
+    # 成功回傳 audio/mpeg 二進位；前端以 blob 播放。
+    # 兩種 provider：
+    #   edge：直接用 edge-tts 合成（免金鑰），標點符號-only 的文字回 400（前端也會先略過）
+    #   http：把請求依範本轉發給 TTS_UPSTREAM_URL，金鑰只存在伺服器環境變數
     cfg = tts_settings()
     if len(req.text) > TTS_MAX_CHARS:
         raise err(413, "ERR_TTS_TEXT_TOO_LONG", f"Text exceeds {TTS_MAX_CHARS} characters.")
