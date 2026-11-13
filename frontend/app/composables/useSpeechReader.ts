@@ -41,7 +41,6 @@ export function useSpeechReader() {
   // 【對接點 ④】啟動時問後端一次 GET /api/v1/tts/config，得知 provider。
   // provider === 'edge'：語速/音調由伺服器合成時套用，前端 <audio> 的 playbackRate 固定為 1，
   // 否則會重複加速。失敗時把旗標還原，下次再問。
-  // Edge provider synthesizes with the requested rate/pitch itself; ask the backend once.
   if (!providerChecked && import.meta.client) {
     providerChecked = true
     fetch(`${apiBase}/api/v1/tts/config`).then(r => r.json())
@@ -66,21 +65,21 @@ export function useSpeechReader() {
     }
     return resolveVoiceURI(voices.value, st.voiceMap[st.voiceGender], st.voiceGender)
   }
-  // Re-parse only when the rule text changes
+  // 只有規則文字改變時才重新解析
   let rulesKey = '', rules: ReturnType<typeof parsePronunciations> = []
-  /** Text the engine should read: the sentence with pronunciation fixes applied. */
+  /** 引擎要唸的文字：套用發音修正後的句子。 */
   function spoken(text: string) {
     const { pronunciationRules: raw, builtinPronunciations: builtin } = store.settings
     const key = `${builtin ? 1 : 0}\u0000${raw}`
     if (key !== rulesKey) {
       rulesKey = key
-      // user rules first: they win ties against built-in rules of the same length
+      // 使用者規則排前面：與內建規則長度相同時由使用者規則勝出
       rules = [...parsePronunciations(raw), ...(builtin ? DEFAULT_PRONUNCIATION_RULES : [])]
     }
     return cleanForSpeech(applyPronunciations(text, rules))
   }
 
-  /** Delivery for one sentence; `following` is the sentence read after it (undefined = end of chapter). */
+  /** 單句的朗讀語氣；`following` 是接在它後面唸的句子（undefined = 章節結尾）。 */
   function prosodyFor(s: SentenceItem, following?: SentenceItem) {
     if (!store.settings.expressive) return NEUTRAL
     return analyzeProsody(s.text, { nextIsParaStart: !following || !!following.paraStart })
@@ -107,7 +106,7 @@ export function useSpeechReader() {
 
   function speakCurrent() {
     let sentence = store.currentSentence
-    // Skip punctuation-only lines (separators, "……") instead of sending them to the engine
+    // 略過只有標點的行（分隔線、「……」），不送給引擎
     while (sentence && !isSpeakable(sentence.text)) {
       if (!store.next()) { stop(); return }
       sentence = store.currentSentence
@@ -153,9 +152,9 @@ export function useSpeechReader() {
     stopHeartbeat()
     heartbeat = setInterval(() => {
       if (store.playbackStatus !== 'PLAYING') return
-      // Between sentences (prosody pause) the engine is idle on purpose; re-speaking now would repeat the sentence
+      // 句間（語氣停頓）引擎是刻意閒置的；此時重唸會造成句子重複
       if (pauseTimer) return
-      // Engine dropped the utterance (browser GC bug): nothing active -> reschedule
+      // 引擎丟掉了這句（瀏覽器 GC 的 bug）：沒有任何東西在進行 → 重新排程
       if (!engine().isActive() && Date.now() - lastEventAt > 10000) speakCurrent()
     }, 10000)
   }
@@ -168,14 +167,14 @@ export function useSpeechReader() {
     lastError.value = ''
     store.setPlaybackStatus('PLAYING')
     speakCurrent()
-    // speakCurrent may have stopped immediately (unsupported / not configured)
+    // speakCurrent 可能已立刻停止（不支援/未設定）
     if (store.playbackStatus === 'PLAYING') startHeartbeat()
   }
   function pause() {
     if (store.playbackStatus !== 'PLAYING') return
     token++
     clearPause()
-    engine().cancel() // cancel + replay sentence is more reliable than pause() across engines
+    engine().cancel() // 在各引擎上，取消後重播該句比 pause() 更可靠
     store.setPlaybackStatus('PAUSED')
     stopHeartbeat()
   }
@@ -206,7 +205,7 @@ export function useSpeechReader() {
     else if (store.playbackStatus === 'PAUSED') resume()
     else play()
   }
-  /** Re-speak current sentence so a changed engine/rate/pitch/voice takes effect. */
+  /** 重唸目前這句，讓更改後的引擎/語速/音調/語音生效。 */
   function refresh() {
     if (store.playbackStatus === 'PLAYING') { webSpeech?.cancel(); cloud?.cancel(); speakCurrent() }
   }
@@ -218,7 +217,7 @@ export function useSpeechReader() {
   }
 }
 
-// Dev hot-reload re-evaluates this module and would leave the old timers/engines playing alongside the new ones
+// 開發時的熱重載會重新執行此模組，舊的計時器/引擎會跟新的一起繼續播放，所以要清掉
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
     clearPause()

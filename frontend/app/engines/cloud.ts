@@ -1,13 +1,13 @@
 import type { SpeakHandlers, SpeakOptions, TTSEngine } from './types'
 
 export interface CloudTtsConfig {
-  /** Full URL of a TTS HTTP endpoint that returns audio bytes (mp3/wav/ogg) */
+  /** TTS HTTP 端點的完整 URL，回傳音訊位元組（mp3/wav/ogg） */
   endpoint: string
-  /** Sent as `Authorization: Bearer <apiKey>` when non-empty */
+  /** 非空時以 `Authorization: Bearer <apiKey>` 送出 */
   apiKey: string
-  /** JSON request body with {{text}}, {{voice}}, {{rate}} placeholders */
+  /** JSON 請求 body 範本，含 {{text}}、{{voice}}、{{rate}} 佔位符 */
   bodyTemplate: string
-  /** Extra headers as JSON object string, e.g. {"x-api-key":"..."} (optional) */
+  /** 額外標頭，JSON 物件字串，例如 {"x-api-key":"..."}（選填） */
   extraHeaders: string
 }
 
@@ -18,7 +18,7 @@ export const defaultCloudConfig = (): CloudTtsConfig => ({
   extraHeaders: ''
 })
 
-/** Placeholders are replaced by JSON-encoded values (strings come quoted & escaped). */
+/** 佔位符會被代換成 JSON 編碼後的值（字串會加引號並跳脫）。 */
 export function renderBody(template: string, vars: { text: string; voice: string; rate: number; pitch?: number }): string {
   return template
     .replace(/\{\{\s*text\s*\}\}/g, () => JSON.stringify(vars.text))
@@ -60,14 +60,14 @@ export class CloudEngine implements TTSEngine {
   private audio: HTMLAudioElement | null = null
   private playing = false
   private gen = 0
-  /** text+voice -> in-flight/finished audio blob (small LRU: current + prefetched) */
+  /** 文字+語音 → 下載中/已完成的音訊 blob（小型 LRU：目前這句 + 預取的句子） */
   private cache = new Map<string, Promise<Blob>>()
 
   constructor(private getConfig: () => CloudTtsConfig, private deps: CloudDeps = browserDeps()) {}
 
   isSupported() { return !!this.getConfig().endpoint }
 
-  /** When true the server applies rate/pitch while synthesizing (Edge provider); playbackRate stays 1. */
+  /** 為 true 時由伺服器在合成時套用語速/音調（Edge provider），playbackRate 維持 1。 */
   serverProsody = false
 
   private key(text: string, o: SpeakOptions) { return `${o.voice}\u0000${o.rate}\u0000${o.pitchPct ?? 0}\u0000${text}` }
@@ -92,7 +92,7 @@ export class CloudEngine implements TTSEngine {
       if (!blob.size) throw new Error('TTS returned empty audio')
       return blob
     })
-    p.catch(() => this.cache.delete(k)) // don't cache failures
+    p.catch(() => this.cache.delete(k)) // 失敗不快取
     this.cache.set(k, p)
     while (this.cache.size > 4) this.cache.delete(this.cache.keys().next().value!)
     return p

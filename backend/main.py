@@ -23,18 +23,18 @@ from starlette.background import BackgroundTask
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("acsm-service")
 
-# adept_activate stores activation.xml here (must be persisted by a volume)
+# adept_activate 會把 activation.xml 存在這裡（必須用 volume 持久化）
 ACTIVATION_DIR = Path.home() / ".config" / "adept"
 
 
 ACTIVATION_ATTEMPTS = 5
-ACTIVATION_TIMEOUT = 45   # seconds per attempt; adept_activate sometimes spins and eats RAM
-ACTIVATION_BACKOFF = 5    # seconds between attempts
-# "unknown" (not started) | "pending" | "ok" | "failed" | "unavailable" (libgourou missing)
+ACTIVATION_TIMEOUT = 45   # 每次嘗試的秒數上限；adept_activate 偶爾會空轉並吃光記憶體
+ACTIVATION_BACKOFF = 5    # 兩次嘗試之間的間隔秒數
+# "unknown"（尚未開始）| "pending" | "ok" | "failed" | "unavailable"（未安裝 libgourou）
 activation_state = "unknown"
 
 
-OUTPUT_CAP = 256 * 1024  # bytes of tool output we are willing to keep
+OUTPUT_CAP = 256 * 1024  # 願意保留的工具輸出位元組數
 
 
 def run_capped(cmd: list[str], timeout: float, stdin_text: str = "") -> subprocess.CompletedProcess:
@@ -76,9 +76,9 @@ def ensure_adobe_activation(attempts: int | None = None, timeout: float | None =
         return True
     for n in range(1, attempts + 1):
         try:
-            # adept_activate asks "directory already exists, overwrite? [y/N]" and, with no
-            # answer, re-prompts forever. We only get here when activation.xml is missing,
-            # so answering "y" never overwrites a real identity.
+            # adept_activate 會問「目錄已存在，要覆寫嗎？[y/N]」，沒有回答就會無限重問。
+            # 只有在 activation.xml 不存在時才會走到這裡，
+            # 所以回答 "y" 不會覆寫到真正的身分。
             r = run_capped(["adept_activate", "--anonymous"], timeout, stdin_text="y\n")
         except FileNotFoundError:
             logger.warning("adept_activate not found; skipping activation (libgourou not installed).")
@@ -103,7 +103,7 @@ def ensure_adobe_activation(attempts: int | None = None, timeout: float | None =
 async def lifespan(_: FastAPI):
     global activation_state
     activation_state = "pending"
-    # Run in a worker thread so the API (and /health) is up while Adobe registers.
+    # 在工作執行緒中執行，這樣 Adobe 註冊期間 API（含 /health）仍可使用。
     task = asyncio.create_task(asyncio.to_thread(ensure_adobe_activation))
     yield
     task.cancel()
@@ -237,7 +237,7 @@ async def fulfill_acsm(
             logger.error("acsmdownloader failed: %s", dl.stderr)
             raise classify_failure(dl.stderr or dl.stdout)
 
-        # libgourou may append the real extension; locate the output
+        # libgourou 可能會自行加上真正的副檔名，所以要找出實際產生的檔案
         produced = next((p for p in work_dir.iterdir()
                          if p.name.startswith("encrypted") ), None)
         if produced is None:
@@ -266,9 +266,9 @@ async def fulfill_acsm(
 
 
 # ---------------------------------------------------------------------------
-# Cloud TTS proxy: keeps the provider API key server-side and avoids CORS.
-# Configure via env: TTS_UPSTREAM_URL, TTS_API_KEY, TTS_BODY_TEMPLATE,
-# TTS_EXTRA_HEADERS (JSON), TTS_DEFAULT_VOICE
+# 雲端 TTS 代理：把服務商的 API 金鑰留在伺服器端，並避開 CORS。
+# 以環境變數設定：TTS_UPSTREAM_URL、TTS_API_KEY、TTS_BODY_TEMPLATE、
+# TTS_EXTRA_HEADERS（JSON）、TTS_DEFAULT_VOICE
 # ---------------------------------------------------------------------------
 TTS_MAX_CHARS = 1000
 DEFAULT_TTS_TEMPLATE = '{"input":{{text}},"voice":{{voice}}}'
@@ -304,7 +304,7 @@ def is_speakable(text: str) -> bool:
 
 async def edge_synthesize(text: str, voice: str, rate: float, pitch_pct: float) -> bytes:
     """Synthesize via edge-tts. The service sporadically returns no audio, so retry a few times."""
-    import edge_tts  # imported lazily so http-only deployments don't need it
+    import edge_tts  # 延遲匯入，這樣只用 http 模式的部署不需要安裝它
     last: Exception | None = None
     for attempt in range(EDGE_ATTEMPTS):
         comm = edge_tts.Communicate(text, voice or EDGE_DEFAULT_VOICE,
@@ -315,8 +315,8 @@ async def edge_synthesize(text: str, voice: str, rate: float, pitch_pct: float) 
                 if chunk["type"] == "audio":
                     audio += chunk["data"]
         except ValueError:
-            raise  # bad parameters: retrying cannot help
-        except Exception as e:  # NoAudioReceived, connection resets, ...
+            raise  # 參數錯誤：重試也沒用
+        except Exception as e:  # NoAudioReceived、連線被重設等
             last = e
             logger.warning("edge-tts attempt %d/%d failed: %s", attempt + 1, EDGE_ATTEMPTS, type(e).__name__)
             await asyncio.sleep(0.3 * (attempt + 1))
@@ -343,7 +343,7 @@ def render_body(template: str, text: str, voice: str, rate: float, pitch: float 
     return re.sub(r"\{\{\s*(text|voice|rate|pitch)\s*\}\}", lambda m: vals[m.group(1)], template)
 
 
-def make_tts_client() -> httpx.AsyncClient:  # overridable in tests
+def make_tts_client() -> httpx.AsyncClient:  # 測試時可覆寫
     return httpx.AsyncClient(timeout=30)
 
 
@@ -351,7 +351,7 @@ class TtsRequest(BaseModel):
     text: str = Field(min_length=1)
     voice: str = ""
     rate: float = Field(1.0, ge=0.25, le=4.0)
-    pitch: float = Field(0.0, ge=-50.0, le=50.0)  # percent change, 0 = unchanged
+    pitch: float = Field(0.0, ge=-50.0, le=50.0)  # 變化百分比，0 = 不變
 
 
 @app.get("/api/v1/tts/config")
@@ -377,7 +377,7 @@ async def tts_proxy(req: TtsRequest):
             raise err(400, "ERR_TTS_NO_SPEECH", "Text has no speakable characters (punctuation only).")
         try:
             audio = await edge_synthesize(req.text, req.voice or cfg["voice"], req.rate, req.pitch)
-        except ValueError as e:  # bad voice/rate/pitch string
+        except ValueError as e:  # 語音/語速/音調字串不合法
             raise err(400, "ERR_TTS_BAD_PARAMS", str(e))
         except Exception as e:
             logger.error("edge-tts failed: %s", e)

@@ -8,7 +8,7 @@ function splitLong(text: string): string[] {
   if (text.length <= MAX_LEN) return [text]
   let parts = text.split(CLAUSE_SPLIT).filter(Boolean)
   if (parts.length === 1) parts = text.split(/(?<=\s)/).filter(Boolean)
-  // merge tiny pieces back up to MAX_LEN, hard-cut anything still too long
+  // 把過小的片段合併到 MAX_LEN，仍然太長的就硬切
   const out: string[] = []
   let buf = ''
   for (const p of parts) {
@@ -27,7 +27,7 @@ export function tokenizeText(rawText: string, chapterId: string): SentenceItem[]
   if (!rawText?.trim()) return []
   const clean = rawText.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '')
   const result: SentenceItem[] = []
-  // Paragraphs: blank-line separated if the text has any, otherwise one per line
+  // 段落：文字中有空行就以空行分隔，否則一行一段
   const paragraphs = /\n[ \t]*\n/.test(clean) ? clean.split(/\n[ \t]*\n+/) : clean.split(/\n+/)
   for (const para of paragraphs) {
     let first = true

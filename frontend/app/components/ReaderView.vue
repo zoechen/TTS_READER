@@ -40,7 +40,7 @@ const fontFamily = computed(() => ({
   kai: '"Kaiti TC", "BiauKai", "DFKai-SB", serif'
 }[store.settings.fontFamily]))
 
-// Scroll lockout: pause auto-scroll for 4s after manual scrolling
+// 捲動鎖定：手動捲動後 4 秒內暫停自動捲動
 let lockedUntil = 0
 const lock = () => { lockedUntil = Date.now() + 4000 }
 const events = ['wheel', 'touchmove', 'keydown'] as const
@@ -57,6 +57,6 @@ async function scrollToActive() {
 watch(() => [store.chapterIndex, store.sentenceIndex], () => {
   if (store.settings.autoScroll && Date.now() >= lockedUntil) scrollToActive()
 })
-// Jumping chapters / opening a book always scrolls
+// 跳章節或開啟書籍時一律捲動
 watch(() => store.chapterIndex, () => { lockedUntil = 0; scrollToActive() })
 </script>

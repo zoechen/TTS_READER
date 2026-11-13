@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest'
 import { extractText } from '../app/utils/parsers'
 
-// Minimal DOM stub (vitest runs in node here)
+// 最小化的 DOM 替身（這裡 vitest 在 node 環境執行）
 const T = (t: string) => ({ nodeType: 3, textContent: t }) as any
 const E = (tagName: string, ...kids: any[]) => ({ nodeType: 1, tagName, childNodes: { forEach: (f: any) => kids.forEach(f) } }) as any
 

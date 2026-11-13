@@ -37,7 +37,7 @@ export class WebSpeechEngine implements TTSEngine {
   }
 
   cancel() {
-    this.current = null // detach so the cancel-triggered events are ignored
+    this.current = null // 先解除綁定，讓 cancel 觸發的事件被忽略
     if (this.isSupported()) window.speechSynthesis.cancel()
   }
 

@@ -6,7 +6,7 @@ export interface OutlineEntry { title: string; pageIndex: number }
 const PAGES_PER_CHAPTER = 5
 const CJK = /[　-鿿＀-￯]/
 
-/** Join PDF text lines: no space between CJK chars, rejoin hyphenated words. */
+/** 合併 PDF 的文字行：中日韓字元之間不加空格，並接回被連字號斷開的單字。 */
 export function joinLines(lines: string[]): string {
   let out = ''
   for (const raw of lines) {
@@ -25,7 +25,7 @@ export interface PdfLine { text: string; x: number; endX: number; y: number; siz
 
 const TERMINAL = /[。！？.!?…」』”"’)）]\s*$/
 
-/** Split a page's lines into paragraphs (by vertical gap, first-line indent, short last line), joined with blank lines. */
+/** 把一頁的行切成段落（依垂直間距、首行縮排、較短的末行），段落間以空行連接。 */
 export function linesToParagraphs(lines: PdfLine[]): string {
   const ls = lines.filter(l => l.text.trim())
   if (!ls.length) return ''
@@ -49,7 +49,7 @@ export function linesToParagraphs(lines: PdfLine[]): string {
   return paras.map(p => joinLines(p.map(l => l.text))).filter(Boolean).join('\n\n')
 }
 
-/** Group per-page text into chapters, by outline when available, else fixed page blocks. */
+/** 把逐頁文字分成章節：有大綱就依大綱，否則用固定頁數區塊。 */
 export function groupPages(pages: string[], outline: OutlineEntry[], fallbackTitle = '第 {n} 頁起'): Chapter[] {
   const starts = [...new Map(
     outline.filter(o => o.pageIndex >= 0 && o.pageIndex < pages.length).map(o => [o.pageIndex, o.title])
@@ -70,7 +70,7 @@ export function groupPages(pages: string[], outline: OutlineEntry[], fallbackTit
     let text = ''
     for (const pg of pages.slice(r.from, r.to)) {
       if (!pg) continue
-      // a page ending mid-sentence continues the same paragraph on the next page
+      // 頁面結束在句子中間時，下一頁會接續同一段
       text += text ? (TERMINAL.test(text) ? '\n\n' : '\n') + pg : pg
     }
     if (!text.trim()) continue

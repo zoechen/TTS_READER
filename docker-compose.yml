@@ -8,10 +8,10 @@ services:
       - "8000:8000"
     volumes:
       - adobe-config:/root/.config/adept
-      - ./backend:/app # For development sync
+      - ./backend:/app # 開發時同步程式碼
     environment:
       - PYTHONUNBUFFERED=1
-      # Cloud TTS proxy (optional) — set in your shell or a .env file
+      # 雲端 TTS 代理（選填）— 在 shell 或 .env 檔設定
       - TTS_PROVIDER=${TTS_PROVIDER:-edge}
       - TTS_UPSTREAM_URL=${TTS_UPSTREAM_URL:-}
       - TTS_API_KEY=${TTS_API_KEY:-}

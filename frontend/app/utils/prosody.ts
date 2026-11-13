@@ -1,13 +1,13 @@
 export interface Prosody {
-  /** multiplier on the user's base speaking rate */
+  /** 使用者基本語速的倍率 */
   rateMul: number
-  /** pitch change in percent (0 = unchanged) */
+  /** 音調變化百分比（0 = 不變） */
   pitchPct: number
-  /** silence to leave after this sentence before the next one starts */
+  /** 這一句結束後、下一句開始前要留的靜默時間 */
   pauseAfterMs: number
 }
 
-/** A sentence made only of punctuation/symbols (……, 「」, ———) has nothing to say; TTS engines reject it. */
+/** 只由標點/符號組成的句子（……、「」、———）沒有可唸的內容，TTS 引擎會拒絕。 */
 export const isSpeakable = (text: string) => /[\p{L}\p{N}]/u.test(text)
 
 export const NEUTRAL: Prosody = { rateMul: 1, pitchPct: 0, pauseAfterMs: 0 }
@@ -16,7 +16,7 @@ const OPEN = '「『“"‘'
 const CLOSE = '」』”"’'
 const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi)
 
-/** Heuristic delivery for one sentence: questions lift, exclamations speed up, ellipses slow down, dialogue brightens. */
+/** 單句的語氣啟發式規則：問句上揚、驚嘆加快、省略號放慢、對話明亮。 */
 export function analyzeProsody(text: string, ctx: { nextIsParaStart?: boolean } = {}): Prosody {
   const t = text.trim()
   if (!t) return NEUTRAL
@@ -32,9 +32,9 @@ export function analyzeProsody(text: string, ctx: { nextIsParaStart?: boolean } 
   else if (/[！!]/.test(last)) { pitchPct += 6; rateMul *= 1.06; pause = 400 }
   else if (/(…|\.{3}|——|—)$/.test(core)) { rateMul *= 0.92; pause = 600 }
   else if (/[,，、;；:：]/.test(last)) { pause = 180 }
-  else if (!/[。.]/.test(last)) { pause = 220 } // no terminal punctuation (cut-off clause)
+  else if (!/[。.]/.test(last)) { pause = 220 } // 沒有句尾標點（被截斷的子句）
 
-  // Dialogue: the whole sentence sits inside quotes
+  // 對話：整句都在引號內
   if (OPEN.includes(t[0]!) && CLOSE.includes(t.slice(-1))) {
     pitchPct += 5; rateMul *= 1.03
   }

@@ -73,7 +73,7 @@ export const useReaderStore = defineStore('reader', {
       this.sentenceIndex = Math.min(Math.max(sentenceIndex, 0), Math.max(len - 1, 0))
     },
     setPlaybackStatus(status: PlaybackStatus) { this.playbackStatus = status },
-    /** Advance one sentence, crossing chapter boundaries. Returns false at end of book. */
+    /** 前進一句，可跨章節。到全書結尾時回傳 false。 */
     next(): boolean {
       if (this.sentenceIndex < this.sentences.length - 1) { this.sentenceIndex++; return true }
       for (let c = this.chapterIndex + 1; c < this.chapters.length; c++) {

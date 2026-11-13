@@ -5,7 +5,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libssl-dev libcurl4-openssl-dev libzip-dev libpugixml-dev ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# NOTE: libgourou upstream; pin a tag for reproducible builds
+# 注意：libgourou 取自上游；為了可重現的建置，建議固定到特定 tag
 RUN git clone https://forge.soutade.fr/soutade/libgourou.git /tmp/libgourou && \
     cd /tmp/libgourou && make && make install && ldconfig && \
     rm -rf /tmp/libgourou

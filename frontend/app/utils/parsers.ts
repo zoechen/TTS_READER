@@ -25,7 +25,7 @@ export async function parseText(blob: Blob, fileName: string): Promise<ParsedBoo
 
 const BLOCK = new Set(['P', 'DIV', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'BLOCKQUOTE', 'SECTION', 'ARTICLE', 'TR', 'PRE', 'DT', 'DD', 'FIGCAPTION'])
 
-/** Text of an element with paragraph breaks ("\n\n") between block elements; works on unrendered documents. */
+/** 取得元素的文字，區塊元素之間以段落分隔（"\n\n"）；可用於未渲染的文件。 */
 export function extractText(root: Node): string {
   let out = ''
   const walk = (n: Node) => {

@@ -88,7 +88,7 @@ function onDrop(e: DragEvent) {
   if (f) lib.importFile(f)
 }
 function jumpChapter(i: number) {
-  // Manually switching chapters stops the current speech; the user presses play to start the new one
+  // 手動切換章節會停止目前的語音；使用者按播放才開始朗讀新章節
   reader.stop()
   store.setPosition(i, 0)
 }
@@ -107,7 +107,7 @@ onMounted(() => {
 
 watch(() => store.settings, () => store.saveSettings(), { deep: true })
 
-// Persist progress (debounced)
+// 儲存閱讀進度（防抖）
 let t: ReturnType<typeof setTimeout> | undefined
 watch(() => [store.chapterIndex, store.sentenceIndex], () => {
   clearTimeout(t)

@@ -1,8 +1,8 @@
 export interface PronunciationRule { from: string; to: string }
 
 /**
- * Parse the user's rule text. One rule per line: `原文=讀成` (also `＝`, `→`, `=>`).
- * Blank lines and lines starting with `#` are ignored.
+ * 解析使用者的規則文字。每行一條規則：`原文=讀成`（也可用 `＝`、`→`、`=>`）。
+ * 空行與以 `#` 開頭的行會被忽略。
  */
 export function parsePronunciations(raw: string): PronunciationRule[] {
   const rules: PronunciationRule[] = []
@@ -18,17 +18,16 @@ export function parsePronunciations(raw: string): PronunciationRule[] {
 }
 
 /**
- * Built-in clean-up of symbols TTS engines read out by name ("/" -> "斜線"): turn slashes into a
- * short pause. Runs after the user's rules, so a rule such as `w/o=without` still wins.
+ * 內建清理：TTS 引擎會把某些符號照名稱唸出來（"/" → 「斜線」），這裡把斜線改成
+ * 短暫停頓。在使用者規則之後才執行，所以像 `w/o=without` 這樣的規則仍然有效。
  */
 export function cleanForSpeech(text: string): string {
   return text.replace(/\s*[/／\\＼]+\s*/g, '，')
 }
 
 /**
- * Replace words with the text the TTS should actually read (e.g. a homophone that gets the
- * right reading of a polyphonic character). Longest match wins; replaced text is never
- * re-scanned, so rules cannot cascade. The text shown on screen is not touched.
+ * 把詞換成 TTS 實際要唸的文字（例如用同音字讓破音字唸對）。
+ * 最長比對優先；替換後的文字不會再被掃描，所以規則不會連鎖套用。畫面上顯示的文字不受影響。
  */
 export function applyPronunciations(text: string, rules: PronunciationRule[]): string {
   if (!rules.length || !text) return text

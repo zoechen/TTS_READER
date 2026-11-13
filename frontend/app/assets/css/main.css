@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-/* Theme tokens */
+/* 主題色票 */
 .app-root, [data-theme] {
   --bg: #ffffff; --fg: #1f2937; --muted: #6b7280; --border: #e5e7eb;
   --surface: #f9fafb; --bar: #ffffffee; --accent: #4f46e5; --accent-fg: #fff;
@@ -20,7 +20,7 @@
 
 body { background: var(--bg, #fff); }
 
-/* Reading text */
+/* 閱讀文字 */
 .reader-text { text-wrap: pretty; word-break: break-word; letter-spacing: 0.02em; }
 .sentence { cursor: pointer; border-radius: 4px; transition: background-color .2s; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
 .sentence:hover { background: var(--hover); }
@@ -39,7 +39,7 @@ body { background: var(--bg, #fff); }
 .progress { height: 3px; background: var(--border); }
 .progress-fill { height: 100%; background: var(--accent); transition: width .3s; }
 
-/* Settings panel */
+/* 設定面板 */
 .panel { background: var(--surface); color: var(--fg); border: 1px solid var(--border); }
 .panel input:not([type=range]):not([type=checkbox]), .panel select, .panel textarea { background: var(--bg); color: var(--fg); border-color: var(--border); }
 .panel input[type=range] { accent-color: var(--accent); }

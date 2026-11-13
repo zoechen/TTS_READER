@@ -17,7 +17,7 @@ export interface SentenceItem {
   order: number
   text: string
   chapterId: string
-  /** true when this sentence starts a new paragraph */
+  /** 這一句是新段落的開頭時為 true */
   paraStart?: boolean
   domSelector?: string
 }
@@ -39,12 +39,12 @@ export interface ReadProgress {
 }
 
 export interface CloudSettings {
-  /** true: call this app's backend /api/v1/tts proxy (key stays on the server) */
+  /** true：呼叫本 App 後端的 /api/v1/tts 代理（金鑰留在伺服器） */
   useProxy: boolean
   endpoint: string
   apiKey: string
   voice: string
-  /** Voice used when gender = female / male (falls back to `voice` when empty) */
+  /** 性別選女聲/男聲時使用的語音（留空則退回 `voice`） */
   voiceFemale: string
   voiceMale: string
   bodyTemplate: string
@@ -56,7 +56,7 @@ export interface ReaderSettings {
   cloud: CloudSettings
   ttsRate: number
   ttsPitch: number
-  /** Web Speech voice (voiceURI or name) to use for each gender preference */
+  /** 各性別偏好所使用的 Web Speech 語音（voiceURI 或名稱） */
   voiceMap: Record<'any' | 'female' | 'male', string>
   voiceGender: 'any' | 'female' | 'male'
   theme: 'light' | 'sepia' | 'dark'
@@ -64,12 +64,12 @@ export interface ReaderSettings {
   lineHeight: number
   fontFamily: 'sans' | 'serif' | 'kai'
   autoScroll: boolean
-  /** Adjust rate / pitch / pauses per sentence (questions, exclamations, dialogue, paragraph ends) */
+  /** 依每句內容調整語速/音調/停頓（問句、驚嘆、對話、段落結尾） */
   expressive: boolean
   /** Pronunciation fixes, one `原文=讀成` per line (see utils/pronounce.ts) */
   pronunciationRules: string
-  /** Also apply the built-in dictionary (utils/defaultPronunciations.ts) */
+  /** 同時套用內建字典（utils/defaultPronunciations.ts） */
   builtinPronunciations: boolean
-  /** Reading column width */
+  /** 閱讀欄寬 */
   pageWidth: 'narrow' | 'normal' | 'wide'
 }

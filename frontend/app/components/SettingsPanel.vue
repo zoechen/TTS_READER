@@ -103,7 +103,7 @@ const props = defineProps<{ voices: readonly SpeechSynthesisVoice[] }>()
 const emit = defineEmits<{ tts: [] }>()
 const s = useReaderStore().settings
 const genderLabel = computed(() => ({ any: '不限', female: '女聲', male: '男聲' }[s.voiceGender]))
-// Chinese voices first; every voice is selectable for any slot
+// 中文語音排前面；每個語音都可指定給任一欄位
 const shownVoices = computed(() =>
   [...props.voices].sort((a, b) => Number(b.lang.startsWith('zh')) - Number(a.lang.startsWith('zh'))))
 </script>

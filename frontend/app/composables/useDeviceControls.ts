@@ -1,7 +1,7 @@
 import { watch } from 'vue'
 import { useReaderStore } from '../stores/reader'
 
-/** Media Session + Screen Wake Lock, driven by playback state. */
+/** Media Session + 螢幕喚醒鎖，依播放狀態驅動。 */
 export function useDeviceControls(h: { play(): void; pause(): void; next(): void; prev(): void }) {
   const store = useReaderStore()
   let lock: WakeLockSentinel | null = null
@@ -45,7 +45,7 @@ export function useDeviceControls(h: { play(): void; pause(): void; next(): void
     }
   }, { immediate: true })
 
-  // Wake lock is dropped when the tab is hidden; re-acquire on return
+  // 分頁隱藏時喚醒鎖會被釋放；回到分頁時重新取得
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible' && store.playbackStatus === 'PLAYING') acquire()
   })

@@ -33,7 +33,7 @@ def test_valid_reaches_tool(monkeypatch):
 def test_activation_skipped_when_tool_missing(monkeypatch, tmp_path):
     import main
     monkeypatch.setattr(main, "ACTIVATION_DIR", tmp_path)
-    assert main.ensure_adobe_activation() is False  # adept_activate absent locally
+    assert main.ensure_adobe_activation() is False  # 本機沒有 adept_activate
 
 def test_activation_noop_when_present(monkeypatch, tmp_path):
     import main
@@ -133,7 +133,7 @@ def test_edge_param_conversion():
 
 def test_tts_edge_provider(monkeypatch):
     import main
-    monkeypatch.delenv("TTS_PROVIDER", raising=False)  # edge is the default
+    monkeypatch.delenv("TTS_PROVIDER", raising=False)  # edge 為預設值
     seen = {}
     async def fake(text, voice, rate, pitch):
         seen.update(text=text, voice=voice, rate=rate, pitch=pitch); return b"MP3DATA"

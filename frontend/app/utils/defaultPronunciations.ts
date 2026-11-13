@@ -1,14 +1,14 @@
 import { parsePronunciations, type PronunciationRule } from './pronounce'
 
 /**
- * Built-in pronunciation fixes, same `原文=讀成` format as the user's rules. User rules take
- * priority on equal-length matches (to opt out of one, write `詞=詞`).
+ * 內建發音修正，格式與使用者規則相同（`原文=讀成`）。比對長度相同時以使用者規則優先
+ * （要停用某一條，寫 `詞=詞` 即可）。
  *
- * Readings follow the MOE 重編國語辭典修訂本 (https://www.moedict.tw/). Only words whose reading
- * of the polyphonic character is unambiguous are listed. Replacement characters are plain homophones:
+ * 讀音依據教育部《重編國語辭典修訂本》（https://www.moedict.tw/）。只收錄破音字讀法
+ * 沒有歧義的詞。替換字都是單純的同音字：
  *   航 = háng,  幸 = xìng,  掌 = zhǎng,  瞭 = liǎo.
- * Lines of the form `詞=詞` are guards: they consume a common compound first so a shorter rule
- * cannot fire inside it (e.g. 進行業務 must not become 進航業務).
+ * 形如 `詞=詞` 的行是保護規則：先吃掉常見的複合詞，避免較短的規則在其中誤觸發
+ *（例如「進行業務」不能變成「進航業務」）。
  */
 const BUILTIN = `
 # ===== 行 =====
