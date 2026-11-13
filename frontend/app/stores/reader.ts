@@ -18,6 +18,7 @@ export const defaultSettings = (): ReaderSettings => ({
   fontFamily: 'serif',
   autoScroll: true,
   expressive: true,
+  pronunciationRules: '',
   pageWidth: 'normal'
 })
 

@@ -66,6 +66,8 @@ export interface ReaderSettings {
   autoScroll: boolean
   /** Adjust rate / pitch / pauses per sentence (questions, exclamations, dialogue, paragraph ends) */
   expressive: boolean
+  /** Pronunciation fixes, one `原文=讀成` per line (see utils/pronounce.ts) */
+  pronunciationRules: string
   /** Reading column width */
   pageWidth: 'narrow' | 'normal' | 'wide'
 }

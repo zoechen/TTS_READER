@@ -42,6 +42,12 @@
       </select>
     </label>
     <label class="flex items-center gap-2"><input v-model="s.expressive" type="checkbox" @change="emit('tts')"> 情感語調（依問句、驚嘆、對話調整語氣與停頓）</label>
+    <details class="rounded border p-2" style="border-color: var(--border)">
+      <summary class="cursor-pointer">發音修正（破音字）</summary>
+      <p class="mt-2 text-xs opacity-70">每行一條：<code>原文=讀成</code>。朗讀時把原文換成較容易讀對的同音字，畫面上的文字不變。<code>#</code> 開頭為註解，越長的詞優先套用。不確定讀音時可到<a href="https://www.moedict.tw/" target="_blank" rel="noopener" class="underline">萌典</a>查詢該詞的注音。</p>
+      <textarea v-model="s.pronunciationRules" rows="6" spellcheck="false" class="mt-2 w-full rounded border p-1 font-mono text-xs"
+                placeholder="# 例：&#10;某詞=同音字詞" @change="emit('tts')" />
+    </details>
     <label class="block">語速 {{ s.ttsRate.toFixed(1) }}x
       <input v-model.number="s.ttsRate" type="range" min="0.5" max="2.5" step="0.1" class="w-full" @change="emit('tts')">
     </label>

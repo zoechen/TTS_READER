@@ -5,6 +5,7 @@ import { WebSpeechEngine } from '../engines/webSpeech'
 import { CloudEngine } from '../engines/cloud'
 import { resolveVoiceURI } from '../utils/voiceGender'
 import { analyzeProsody, isSpeakable, NEUTRAL } from '../utils/prosody'
+import { applyPronunciations, cleanForSpeech, parsePronunciations } from '../utils/pronounce'
 import type { SentenceItem } from '../types/reader'
 
 const voices = ref<SpeechSynthesisVoice[]>([])
@@ -59,6 +60,15 @@ export function useSpeechReader() {
     }
     return resolveVoiceURI(voices.value, st.voiceMap[st.voiceGender], st.voiceGender)
   }
+  // Re-parse only when the rule text changes
+  let rulesRaw = '', rules: ReturnType<typeof parsePronunciations> = []
+  /** Text the engine should read: the sentence with pronunciation fixes applied. */
+  function spoken(text: string) {
+    const raw = store.settings.pronunciationRules
+    if (raw !== rulesRaw) { rulesRaw = raw; rules = parsePronunciations(raw) }
+    return cleanForSpeech(applyPronunciations(text, rules))
+  }
+
   /** Delivery for one sentence; `following` is the sentence read after it (undefined = end of chapter). */
   function prosodyFor(s: SentenceItem, following?: SentenceItem) {
     if (!store.settings.expressive) return NEUTRAL
@@ -81,7 +91,7 @@ export function useSpeechReader() {
     const i = store.sentenceIndex + 1
     const inChapter = store.sentences[i]
     const s = inChapter ?? store.chapters[store.chapterIndex + 1]?.sentences[0]
-    if (s) e.prefetch(s.text, opts(s, inChapter ? store.sentences[i + 1] : store.chapters[store.chapterIndex + 1]?.sentences[1]))
+    if (s) e.prefetch(spoken(s.text), opts(s, inChapter ? store.sentences[i + 1] : store.chapters[store.chapterIndex + 1]?.sentences[1]))
   }
 
   function speakCurrent() {
@@ -106,7 +116,7 @@ export function useSpeechReader() {
     lastEventAt = Date.now()
     const following = store.sentences[store.sentenceIndex + 1]
     const pauseMs = store.settings.expressive ? prosodyFor(sentence, following).pauseAfterMs : 0
-    e.speak(sentence.text, opts(sentence, following), {
+    e.speak(spoken(sentence.text), opts(sentence, following), {
       onStart: () => { peekNext() },
       onActivity: () => { lastEventAt = Date.now() },
       onEnd: () => {
@@ -132,6 +142,8 @@ export function useSpeechReader() {
     stopHeartbeat()
     heartbeat = setInterval(() => {
       if (store.playbackStatus !== 'PLAYING') return
+      // Between sentences (prosody pause) the engine is idle on purpose; re-speaking now would repeat the sentence
+      if (pauseTimer) return
       // Engine dropped the utterance (browser GC bug): nothing active -> reschedule
       if (!engine().isActive() && Date.now() - lastEventAt > 10000) speakCurrent()
     }, 10000)
@@ -193,4 +205,14 @@ export function useSpeechReader() {
     supported: webSpeech.isSupported(),
     play, pause, resume, stop, seekTo, next, prev, toggle, refresh
   }
+}
+
+// Dev hot-reload re-evaluates this module and would leave the old timers/engines playing alongside the new ones
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    clearPause()
+    if (heartbeat) clearInterval(heartbeat)
+    webSpeech?.cancel()
+    cloud?.cancel()
+  })
 }

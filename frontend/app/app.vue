@@ -85,8 +85,9 @@ function onDrop(e: DragEvent) {
   if (f) lib.importFile(f)
 }
 function jumpChapter(i: number) {
+  // Manually switching chapters stops the current speech; the user presses play to start the new one
+  reader.stop()
   store.setPosition(i, 0)
-  if (store.playbackStatus === 'PLAYING') reader.seekTo(0, i)
 }
 async function closeBook() {
   reader.stop()
