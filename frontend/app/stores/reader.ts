@@ -19,6 +19,7 @@ export const defaultSettings = (): ReaderSettings => ({
   autoScroll: true,
   expressive: true,
   pronunciationRules: '',
+  builtinPronunciations: true,
   pageWidth: 'normal'
 })
 

@@ -68,6 +68,8 @@ export interface ReaderSettings {
   expressive: boolean
   /** Pronunciation fixes, one `原文=讀成` per line (see utils/pronounce.ts) */
   pronunciationRules: string
+  /** Also apply the built-in dictionary (utils/defaultPronunciations.ts) */
+  builtinPronunciations: boolean
   /** Reading column width */
   pageWidth: 'narrow' | 'normal' | 'wide'
 }

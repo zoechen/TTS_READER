@@ -6,6 +6,7 @@ import { CloudEngine } from '../engines/cloud'
 import { resolveVoiceURI } from '../utils/voiceGender'
 import { analyzeProsody, isSpeakable, NEUTRAL } from '../utils/prosody'
 import { applyPronunciations, cleanForSpeech, parsePronunciations } from '../utils/pronounce'
+import { DEFAULT_PRONUNCIATION_RULES } from '../utils/defaultPronunciations'
 import type { SentenceItem } from '../types/reader'
 
 const voices = ref<SpeechSynthesisVoice[]>([])
@@ -61,11 +62,16 @@ export function useSpeechReader() {
     return resolveVoiceURI(voices.value, st.voiceMap[st.voiceGender], st.voiceGender)
   }
   // Re-parse only when the rule text changes
-  let rulesRaw = '', rules: ReturnType<typeof parsePronunciations> = []
+  let rulesKey = '', rules: ReturnType<typeof parsePronunciations> = []
   /** Text the engine should read: the sentence with pronunciation fixes applied. */
   function spoken(text: string) {
-    const raw = store.settings.pronunciationRules
-    if (raw !== rulesRaw) { rulesRaw = raw; rules = parsePronunciations(raw) }
+    const { pronunciationRules: raw, builtinPronunciations: builtin } = store.settings
+    const key = `${builtin ? 1 : 0}\u0000${raw}`
+    if (key !== rulesKey) {
+      rulesKey = key
+      // user rules first: they win ties against built-in rules of the same length
+      rules = [...parsePronunciations(raw), ...(builtin ? DEFAULT_PRONUNCIATION_RULES : [])]
+    }
     return cleanForSpeech(applyPronunciations(text, rules))
   }
 
