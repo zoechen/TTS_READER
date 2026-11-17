@@ -94,3 +94,14 @@ describe('built-in 長 / 了 dictionary', () => {
     expect(say('校長', '校長=校長')).toBe('校長')
   })
 })
+
+describe('built-in dictionary: 著', () => {
+  const say = (x: string) => applyPronunciations(x, DEFAULTS)
+  it('fixes zhù / zhuó words', () => {
+    expect(say('著名作家的著作')).toBe('注名作家的注作')
+    expect(say('著手處理，執著於夢想，飛機著陸')).toBe('卓手處理，執卓於夢想，飛機卓陸')
+  })
+  it('leaves the particle 著 (zhe) alone', () => {
+    for (const x of ['他看著名單', '拿著手機', '想著想像中的事', '背著重物', '盯著眼睛', '笑著說', '走著瞧']) expect(say(x)).toBe(x)
+  })
+})
